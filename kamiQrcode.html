@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>✨ Ultra QR — Full HD / 3D QR Generator ✨</title>
+<meta name="description" content="Full-HD client-side QR maker with 3D animated background, welcome card, download & copy. No server, runs in browser."/>
+<link rel="icon" href="data:," />
+
+<style>
+  /* --------- Reset & base --------- */
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;
+    font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial;
+    -webkit-font-smoothing:antialiased;
+    background:#05060a;
+    color:#e9f1ff;
+    overflow:hidden;
+  }
+
+  /* --------- 3D animated background (particles + gradient) --------- */
+  #bg {
+    position:fixed; inset:0; z-index:0;
+    background: radial-gradient(1200px 600px at 10% 10%, rgba(0,120,255,0.06), transparent 6%),
+                radial-gradient(1000px 500px at 90% 90%, rgba(120,0,255,0.06), transparent 6%),
+                linear-gradient(180deg,#071026 0%, #031022 40%, #02101a 100%);
+    backdrop-filter: blur(0.6px);
+  }
+  canvas#particles{ position:fixed; inset:0; z-index:0; mix-blend-mode:screen; opacity:.85; }
+
+  /* --------- Layout --------- */
+  .stage{
+    position:relative; z-index:5;
+    max-width:1200px; margin:32px auto; padding:28px;
+    display:grid; grid-template-columns: 1fr 480px; gap:28px; align-items:start;
+  }
+  @media(max-width:980px){ .stage{grid-template-columns:1fr; padding:18px} }
+
+  /* --------- Left panel: welcome + controls --------- */
+  .panel{
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+    border: 1px solid rgba(255,255,255,0.035);
+    border-radius:18px; padding:22px; box-shadow: 0 10px 50px rgba(3,8,20,0.6);
+    backdrop-filter: blur(6px);
+  }
+
+  .brand{
+    display:flex; gap:14px; align-items:center;
+  }
+  .logo{
+    width:64px; height:64px; border-radius:12px; background:linear-gradient(135deg,#00b3ff,#7b61ff);
+    display:flex; align-items:center; justify-content:center; font-weight:800; color:#011526; font-size:20px;
+    transform: rotateY(12deg) rotateX(6deg);
+    box-shadow: 0 8px 30px rgba(11,72,120,0.18), inset 0 -6px 12px rgba(255,255,255,0.06);
+  }
+  .title{ font-size:18px; font-weight:700; letter-spacing:0.2px; }
+  .subtitle{ color: #cfe6ff; font-size:13px; margin-top:4px; }
+
+  /* welcome 3D card */
+  .welcomeCard{
+    margin-top:18px; border-radius:16px; padding:20px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+    transform-style: preserve-3d;
+    perspective:900px;
+    position:relative; overflow:hidden;
+  }
+  .welcomeInner{
+    transform-origin:center center;
+    transition: transform 900ms cubic-bezier(.22,.9,.35,1);
+    will-change: transform;
+    display:flex; gap:14px; align-items:center;
+  }
+  .avatar{
+    width:84px; height:84px; border-radius:14px; background:linear-gradient(180deg,#ffd66b,#ff9a5b);
+    color:#07202a; display:flex; align-items:center; justify-content:center; font-weight:900; font-size:28px;
+    box-shadow: 0 8px 30px rgba(255,150,50,0.12);
+  }
+  .welcomeText{ text-align:left }
+  .welcomeText h2{ margin:0; font-size:20px; letter-spacing:.2px; }
+  .welcomeText p{ margin:6px 0 0; color:#cfe6ff; font-size:13px; }
+
+  /* control group */
+  .controls{ margin-top:16px; display:grid; gap:10px; grid-template-columns: 1fr 1fr; }
+  @media(max-width:520px){ .controls{grid-template-columns:1fr} }
+
+  label{ font-size:12px; color:#bcd9ff; display:block; margin-bottom:6px; }
+  input[type="text"], select, input[type="number"]{
+    width:100%; padding:10px 12px; border-radius:10px; border:1px solid rgba(255,255,255,0.035);
+    background: rgba(6,14,28,0.55); color: #e8f6ff; outline:none; font-size:14px;
+  }
+
+  .row{ display:flex; gap:10px; align-items:center; }
+  .leftcol{ flex:1 }
+
+  .btn{
+    background: linear-gradient(90deg,#00b3ff,#7b61ff);
+    color:#021526; border:none; padding:10px 14px; font-weight:800; border-radius:10px; cursor:pointer;
+    box-shadow: 0 10px 28px rgba(11,72,120,0.12), inset 0 -4px 10px rgba(255,255,255,0.06);
+  }
+  .btn.ghost{ background:transparent; color:#bfe4ff; border:1px solid rgba(255,255,255,0.035); box-shadow:none; }
+
+  .small{ font-size:12px; color:#bcd9ff; }
+
+  /* --------- Right panel: 3D QR preview card --------- */
+  .previewCard{
+    border-radius:18px; padding:18px; display:flex; flex-direction:column; align-items:center;
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+    border:1px solid rgba(255,255,255,0.025);
+  }
+  .qrWrap{
+    width:100%; display:flex; align-items:center; justify-content:center; padding:10px;
+  }
+  canvas#qrCanvas{ background: white; border-radius:12px; box-shadow: 0 20px 60px rgba(3,8,20,0.6); }
+
+  .metaRow{ width:100%; display:flex; gap:8px; margin-top:12px; align-items:center; justify-content:space-between; }
+  .metaLeft{ display:flex; gap:8px; align-items:center; }
+  .chip{ background:rgba(255,255,255,0.03); padding:8px 10px; border-radius:10px; color:#dff3ff; font-weight:700; font-size:13px; }
+  .donate{
+    margin-top:18px; width:100%; padding:12px; border-radius:12px; background:linear-gradient(90deg,#ff9a5b,#ffd66b);
+    color:#071526; font-weight:800; display:flex; align-items:center; justify-content:space-between;
+  }
+  .donate a{ color:#071526; text-decoration:none; font-weight:900 }
+
+  .footerNote{ margin-top:12px; font-size:12px; color:#bcd9ff; text-align:center; opacity:.95; }
+
+  /* helper */
+  .hide{ display:none !important }
+  code.inline{ background:rgba(255,255,255,0.02); padding:4px 6px; border-radius:6px; font-weight:700 }
+</style>
+</head>
+<body>
+
+  <div id="bg"></div>
+  <canvas id="particles"></canvas>
+
+  <main class="stage" role="main" aria-labelledby="appTitle">
+
+    <!-- LEFT -->
+    <section class="panel" aria-label="Controls">
+      <div class="brand">
+        <div class="logo">QR</div>
+        <div>
+          <div class="title" id="appTitle">Ultra QR • Full HD</div>
+          <div class="subtitle">Client-side • 3D welcome • PNG download • Transparent bg</div>
+        </div>
+      </div>
+
+      <div class="welcomeCard" id="welcomeCard">
+        <div class="welcomeInner" id="welcomeInner">
+          <div class="avatar" id="avatar">U</div>
+          <div class="welcomeText">
+            <h2 id="welcomeH">Welcome</h2>
+            <p id="welcomeP">Your personal QR generator — enter any link and get a high-resolution QR code instantly.</p>
+          </div>
+        </div>
+      </div>
+
+      <div style="height:10px"></div>
+
+      <div class="controls" id="controlsArea">
+        <div>
+          <label>Link / Text to encode</label>
+          <input id="urlInput" type="text" placeholder="Paste YouTube / TikTok / Facebook / profile / any URL">
+        </div>
+
+        <div>
+          <label>Output size (px)</label>
+          <select id="sizeSelect">
+            <option value="512">512 × 512</option>
+            <option value="720">720 × 720</option>
+            <option value="1080" selected>1080 × 1080 (Full HD)</option>
+            <option value="2048">2048 × 2048 (Print)</option>
+          </select>
+        </div>
+
+        <div>
+          <label>Margin (px)</label>
+          <input id="marginInput" type="number" value="20" min="0" max="200">
+        </div>
+
+        <div>
+          <label>Filename</label>
+          <input id="fname" type="text" placeholder="qr_code" value="qr_code">
+        </div>
+
+      </div>
+
+      <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap">
+        <button class="btn" id="genBtn">Generate QR</button>
+        <button class="btn ghost" id="clearBtn">Clear</button>
+        <button class="btn ghost" id="copyLinkBtn">Copy Link</button>
+        <button class="btn" id="downloadBtn">Download PNG</button>
+
+        <label style="margin-left:auto; display:flex; align-items:center; gap:8px;">
+          <input type="checkbox" id="transparentChk"> <span class="small">Transparent BG</span>
+        </label>
+      </div>
+
+      <div class="footerNote" style="margin-top:14px">
+        Tip: For Instagram/TikTok posts use <code class="inline">1080×1080</code>. For printing choose <code class="inline">2048</code>.
+      </div>
+
+    </section>
+
+    <!-- RIGHT -->
+    <aside class="previewCard" aria-label="Preview">
+      <div style="width:100%; display:flex; justify-content:space-between; align-items:center;">
+        <div class="metaLeft">
+          <div class="chip" id="chipText">No QR</div>
+        </div>
+        <div class="metaRight">
+          <div class="small">Preview</div>
+        </div>
+      </div>
+
+      <div class="qrWrap" style="margin-top:12px">
+        <canvas id="qrCanvas" width="540" height="540" aria-hidden="false"></canvas>
+      </div>
+
+      <div class="metaRow">
+        <div class="small">Filename: <strong id="showFile">qr_code.png</strong></div>
+        <div class="small">Size: <strong id="showPx">1080</strong> px</div>
+      </div>
+
+      <div class="donate" role="note" aria-label="Donation">
+        <div>
+          <div style="font-size:13px">❤️ Support / Donate</div>
+          <div style="font-weight:900;font-size:18px;letter-spacing:.6px">+92 318 2262567</div>
+        </div>
+        <div>
+          <!-- WhatsApp contact link -->
+          <a id="waDonate" href="https://wa.me/923182262567" target="_blank" rel="noopener">Message on WhatsApp</a>
+        </div>
+      </div>
+
+      <div class="footerNote" style="opacity:.95">
+        No upload. This tool runs fully in your browser (offline). Your data stays on your device.
+      </div>
+    </aside>
+  </main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+<script>
+/* ========= Particles background ========= */
+(() => {
+  const canvas = document.getElementById('particles');
+  const ctx = canvas.getContext('2d');
+  let w = canvas.width = innerWidth;
+  let h = canvas.height = innerHeight;
+  let particles = [];
+  const count = Math.max(80, Math.floor((w*h) / 14000));
+  function rand(min,max){ return Math.random()*(max-min)+min; }
+  function make(){
+    particles = [];
+    for(let i=0;i<count;i++){
+      particles.push({
+        x: rand(0,w),
+        y: rand(0,h),
+        r: rand(0.6,2.6),
+        vx: rand(-0.25,0.25),
+        vy: rand(-0.2,0.2),
+        hue: rand(190,290),
+        life: rand(0,1000),
+      });
+    }
+  }
+  function draw(){
+    ctx.clearRect(0,0,w,h);
+    for(const p of particles){
+      p.x += p.vx;
+      p.y += p.vy;
+      p.life += 1;
+      if(p.x< -10) p.x = w+10;
+      if(p.x> w+10) p.x = -10;
+      if(p.y< -10) p.y = h+10;
+      if(p.y> h+10) p.y = -10;
+      const g = ctx.createRadialGradient(p.x,p.y,p.r*0.2,p.x,p.y,p.r*6);
+      g.addColorStop(0, `hsla(${p.hue},85%,60%,0.18)`);
+      g.addColorStop(1, `hsla(${p.hue},60%,50%,0)`);
+      ctx.beginPath();
+      ctx.fillStyle = g;
+      ctx.arc(p.x,p.y,p.r*6,0,Math.PI*2);
+      ctx.fill();
+    }
+  }
+  make();
+  let raf;
+  function loop(){ draw(); raf = requestAnimationFrame(loop); }
+  loop();
+  addEventListener('resize', ()=>{ w = canvas.width = innerWidth; h = canvas.height = innerHeight; make(); });
+})();
+
+/* ========= Welcome prompt + 3D subtle tilt ========= */
+const welcomeInner = document.getElementById('welcomeInner');
+const welcomeH = document.getElementById('welcomeH');
+const welcomeP = document.getElementById('welcomeP');
+const avatar = document.getElementById('avatar');
+
+let nameStored = localStorage.getItem('uq_name') || '';
+function askName(){
+  const n = prompt('Enter your name (for welcome):', nameStored || '');
+  if(n && n.trim()){
+    localStorage.setItem('uq_name', n.trim());
+    nameStored = n.trim();
+    showWelcome(n.trim());
+  } else {
+    showWelcome('Guest');
+  }
+}
+function showWelcome(name){
+  avatar.textContent = name.split(' ').map(s=>s[0]||'').slice(0,2).join('').toUpperCase();
+  welcomeH.textContent = `Welcome, ${name}!`;
+  welcomeP.textContent = "Your personal Full-HD QR studio • Paste any link and download high-res PNG";
+  // gentle 3D pop on load
+  welcomeInner.style.transform = 'translateZ(12px) rotateX(6deg) rotateY(-6deg)';
+  setTimeout(()=> welcomeInner.style.transform = 'translateZ(0) rotateX(0) rotateY(0)', 1200);
+}
+if(nameStored){ showWelcome(nameStored); } else { askName(); }
+
+/* ========= QR generation & canvas handling ========= */
+const urlInput = document.getElementById('urlInput');
+const sizeSelect = document.getElementById('sizeSelect');
+const marginInput = document.getElementById('marginInput');
+const fnameInput = document.getElementById('fname');
+const genBtn = document.getElementById('genBtn');
+const clearBtn = document.getElementById('clearBtn');
+const copyLinkBtn = document.getElementById('copyLinkBtn');
+const downloadBtn = document.getElementById('downloadBtn');
+const transparentChk = document.getElementById('transparentChk');
+const qrCanvas = document.getElementById('qrCanvas');
+const chipText = document.getElementById('chipText');
+const showFile = document.getElementById('showFile');
+const showPx = document.getElementById('showPx');
+
+let lastGenerated = null;
+
+function updateMeta(text, size){
+  chipText.textContent = text ? 'QR for: ' + (text.length>36? text.slice(0,36)+'…': text) : 'No QR';
+  showFile.textContent = (fnameInput.value||'qr_code') + '.png';
+  showPx.textContent = size;
+}
+
+function generateQR(highRes=false){
+  const txt = (urlInput.value||'').trim();
+  if(!txt){ alert('Please enter a link or text to encode.'); urlInput.focus(); return; }
+
+  const outSize = parseInt(sizeSelect.value,10) || 1080;
+  const margin = parseInt(marginInput.value,10) || 20;
+  const transparent = !!transparentChk.checked;
+  const fname = (fnameInput.value||'qr_code').replace(/[^\w\-]/g,'_');
+
+  // We'll draw high-res to an offscreen canvas then downscale to preview canvas
+  const off = document.createElement('canvas');
+  off.width = outSize;
+  off.height = outSize;
+  const ctx = off.getContext('2d');
+
+  // background
+  if(!transparent){
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0,0,off.width, off.height);
+  } else {
+    ctx.clearRect(0,0,off.width, off.height);
+  }
+
+  const innerSize = outSize - margin*2;
+
+  // Use QRious to generate a PNG dataURL of appropriate size
+  // QRious returns a PNG dataURL
+  const q = new QRious({ value: txt, size: innerSize, level: 'M' });
+  const img = new Image();
+  img.onload = function(){
+    ctx.drawImage(img, margin, margin, innerSize, innerSize);
+
+    // draw optional subtle frame or drop-shadow on preview (not on download)
+    // preview: fit to visible canvas
+    const prev = qrCanvas;
+    const prevCtx = prev.getContext('2d');
+    // scale down to preview size while preserving quality
+    const previewPx = Math.min(1080, outSize, 540);
+    prev.width = previewPx;
+    prev.height = previewPx;
+    prevCtx.clearRect(0,0, prev.width, prev.height);
+    // background for preview: white unless transparent
+    if(!transparent){
+      prevCtx.fillStyle = '#ffffff';
+      prevCtx.fillRect(0,0,prev.width,prev.height);
+    } else {
+      prevCtx.clearRect(0,0,prev.width,prev.height);
+    }
+    // compute draw size
+    const scale = previewPx / outSize;
+    prevCtx.drawImage(off, 0, 0, outSize, outSize, 0, 0, previewPx, previewPx);
+
+    // update lastGenerated
+    lastGenerated = { canvasOff: off, filename: fname + '.png', size: outSize, text: txt, transparent };
+
+    updateMeta(txt, outSize);
+  };
+  img.src = q.toDataURL();
+}
+
+// download high-res PNG from lastGenerated
+function downloadPNG(){
+  if(!lastGenerated){ alert('Generate a QR first.'); return; }
+  const off = lastGenerated.canvasOff;
+  off.toBlob(function(blob){
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = lastGenerated.filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }, 'image/png');
+}
+
+// copy link to clipboard
+function copyLink(){
+  const txt = (urlInput.value||'').trim();
+  if(!txt){ alert('No link to copy.'); return; }
+  navigator.clipboard?.writeText(txt).then(()=> alert('Link copied to clipboard.'), ()=> prompt('Copy this link:', txt));
+}
+
+// clear
+function clearAll(){
+  urlInput.value = '';
+  fnameInput.value = 'qr_code';
+  transparentChk.checked = false;
+  marginInput.value = '20';
+  const ctx = qrCanvas.getContext('2d'); ctx.clearRect(0,0,qrCanvas.width, qrCanvas.height);
+  lastGenerated = null;
+  updateMeta('', '');
+}
+
+// wire up events
+genBtn.addEventListener('click', ()=> generateQR(true));
+downloadBtn.addEventListener('click', downloadPNG);
+copyLinkBtn.addEventListener('click', copyLink);
+clearBtn.addEventListener('click', clearAll);
+
+// keyboard: Enter in url field triggers generate
+urlInput.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); generateQR(true); }});
+
+// update meta initially
+updateMeta('', 1080);
+
+/* ========= small UX: tilt welcome card on mouse move ========= */
+(function(){
+  const card = document.getElementById('welcomeCard');
+  document.addEventListener('mousemove', (e)=>{
+    const rect = card.getBoundingClientRect();
+    const cx = rect.left + rect.width/2;
+    const cy = rect.top + rect.height/2;
+    const dx = (e.clientX - cx) / rect.width;
+    const dy = (e.clientY - cy) / rect.height;
+    const tiltX = dy * -6;
+    const tiltY = dx * 8;
+    document.getElementById('welcomeInner').style.transform = `rotateX(${tiltX}deg) rotateY(${tiltY}deg) translateZ(6px)`;
+  });
+  document.addEventListener('mouseleave', ()=> document.getElementById('welcomeInner').style.transform = 'translateZ(0) rotateX(0) rotateY(0)');
+})();
+
+/* ========= quick-save last used values ========= */
+(function(){
+  const keys = ['uq_name','uq_last_url','uq_fname','uq_size','uq_margin','uq_transparent'];
+  // restore url, fname
+  document.addEventListener('DOMContentLoaded', ()=>{
+    if(localStorage.uq_last_url) urlInput.value = localStorage.uq_last_url;
+    if(localStorage.uq_fname) fnameInput.value = localStorage.uq_fname;
+    if(localStorage.uq_size) sizeSelect.value = localStorage.uq_size;
+    if(localStorage.uq_margin) marginInput.value = localStorage.uq_margin;
+    if(localStorage.uq_transparent) transparentChk.checked = localStorage.uq_transparent === '1';
+  });
+  // save on changes
+  [urlInput, fnameInput, sizeSelect, marginInput, transparentChk].forEach(el=>{
+    el.addEventListener('change', ()=> {
+      localStorage.uq_last_url = urlInput.value || '';
+      localStorage.uq_fname = fnameInput.value || '';
+      localStorage.uq_size = sizeSelect.value || '';
+      localStorage.uq_margin = marginInput.value || '';
+      localStorage.uq_transparent = transparentChk.checked ? '1' : '0';
+    });
+  });
+})();
+
+/* ========= small accessibility: keyboard shortcut G to generate ========= */
+document.addEventListener('keydown', e=>{
+  if(e.key.toLowerCase()==='g' && (e.ctrlKey||e.metaKey)){
+    e.preventDefault();
+    generateQR(true);
+  }
+});
+
+/* ========= done ========= */
+</script>
+</body>
+</html>
